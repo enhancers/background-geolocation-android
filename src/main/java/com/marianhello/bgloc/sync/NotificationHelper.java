@@ -74,7 +74,14 @@ public class NotificationHelper {
             if (launchIntent != null) {
                 // NOTICE: testing apps might not have registered launch intent
                 launchIntent.addFlags(Intent.FLAG_ACTIVITY_REORDER_TO_FRONT | Intent.FLAG_ACTIVITY_SINGLE_TOP);
-                PendingIntent contentIntent = PendingIntent.getActivity(appContext, 0, launchIntent, PendingIntent.FLAG_CANCEL_CURRENT);
+                PendingIntent contentIntent;
+
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+                    contentIntent = PendingIntent.getActivity(appContext, 0, launchIntent, PendingIntent.FLAG_IMMUTABLE);
+                } else {
+                    contentIntent = PendingIntent.getActivity(appContext, 0, launchIntent, PendingIntent.FLAG_CANCEL_CURRENT);
+                }
+
                 builder.setContentIntent(contentIntent);
             }
 
