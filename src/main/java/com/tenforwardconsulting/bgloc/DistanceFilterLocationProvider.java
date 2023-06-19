@@ -296,8 +296,47 @@ public class DistanceFilterLocationProvider extends AbstractLocationProvider imp
         return bestResult;
     }
 
+    public void handleTrackingBySpeed(Location location) {
+        Integer distanceFilter = 10;
+
+        if (lastLocation == null) {
+            lastLocation = location;
+        }
+        if(location.getSpeed() < 1 || location.getSpeed() > 50) {
+            return;
+        }
+        if(location.getSpeed() > 5 && location.getSpeed() <= 8) {
+            distanceFilter = 10;
+        }
+        if(location.getSpeed() > 8 && location.getSpeed() <= 15) {
+            distanceFilter = 25;
+        }
+        if(location.getSpeed() > 15 && location.getSpeed() <= 20) {
+            distanceFilter = 50;
+        }
+        if(location.getSpeed() > 20 && location.getSpeed() <= 35) {
+            distanceFilter = 200;
+        }
+        if(location.getSpeed() > 35 && location.getSpeed() <= 50) {
+            distanceFilter = 400;
+        }
+
+        // Go ahead and cache, push to server
+        if (location.distanceTo(lastLocation) > distanceFilter) {
+            lastLocation = location;
+            handleLocation(location);
+        }
+    }
+
     public void onLocationChanged(Location location) {
         logger.debug("Location change: {} isMoving={}", location.toString(), isMoving);
+
+        Boolean forceTrackingBySpeed = true;
+
+        if(forceTrackingBySpeed) {
+            handleTrackingBySpeed(location);
+            return;
+        }
 
         if (!isMoving && !isAcquiringStationaryLocation && stationaryLocation==null) {
             // Perhaps our GPS signal was interupted, re-acquire a stationaryLocation now.
