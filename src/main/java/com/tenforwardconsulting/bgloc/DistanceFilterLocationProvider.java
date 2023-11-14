@@ -21,6 +21,7 @@ import android.location.Criteria;
 import android.location.Location;
 import android.location.LocationListener;
 import android.location.LocationManager;
+import android.os.Build;
 import android.os.Bundle;
 
 import com.marianhello.bgloc.Config;
@@ -84,21 +85,36 @@ public class DistanceFilterLocationProvider extends AbstractLocationProvider imp
         locationManager = (LocationManager) mContext.getSystemService(Context.LOCATION_SERVICE);
         alarmManager = (AlarmManager) mContext.getSystemService(Context.ALARM_SERVICE);
 
-        // Stop-detection PI
-        stationaryAlarmPI = PendingIntent.getBroadcast(mContext, 0, new Intent(STATIONARY_ALARM_ACTION), 0);
-        registerReceiver(stationaryAlarmReceiver, new IntentFilter(STATIONARY_ALARM_ACTION));
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+            stationaryAlarmPI = PendingIntent.getBroadcast(mContext, 0, new Intent(STATIONARY_ALARM_ACTION), PendingIntent.FLAG_MUTABLE);
+            registerReceiver(stationaryAlarmReceiver, new IntentFilter(STATIONARY_ALARM_ACTION));
 
-        // Stationary region PI
-        stationaryRegionPI = PendingIntent.getBroadcast(mContext, 0, new Intent(STATIONARY_REGION_ACTION), PendingIntent.FLAG_CANCEL_CURRENT);
-        registerReceiver(stationaryRegionReceiver, new IntentFilter(STATIONARY_REGION_ACTION));
+            stationaryRegionPI = PendingIntent.getBroadcast(mContext, 0, new Intent(STATIONARY_REGION_ACTION), PendingIntent.FLAG_CANCEL_CURRENT | PendingIntent.FLAG_MUTABLE);
+            registerReceiver(stationaryRegionReceiver, new IntentFilter(STATIONARY_REGION_ACTION));
 
-        // Stationary location monitor PI
-        stationaryLocationPollingPI = PendingIntent.getBroadcast(mContext, 0, new Intent(STATIONARY_LOCATION_MONITOR_ACTION), 0);
-        registerReceiver(stationaryLocationMonitorReceiver, new IntentFilter(STATIONARY_LOCATION_MONITOR_ACTION));
+            stationaryLocationPollingPI = PendingIntent.getBroadcast(mContext, 0, new Intent(STATIONARY_LOCATION_MONITOR_ACTION), PendingIntent.FLAG_MUTABLE);
+            registerReceiver(stationaryLocationMonitorReceiver, new IntentFilter(STATIONARY_LOCATION_MONITOR_ACTION));
 
-        // One-shot PI (TODO currently unused)
-        singleUpdatePI = PendingIntent.getBroadcast(mContext, 0, new Intent(SINGLE_LOCATION_UPDATE_ACTION), PendingIntent.FLAG_CANCEL_CURRENT);
-        registerReceiver(singleUpdateReceiver, new IntentFilter(SINGLE_LOCATION_UPDATE_ACTION));
+            singleUpdatePI = PendingIntent.getBroadcast(mContext, 0, new Intent(SINGLE_LOCATION_UPDATE_ACTION), PendingIntent.FLAG_CANCEL_CURRENT | PendingIntent.FLAG_MUTABLE);
+            registerReceiver(singleUpdateReceiver, new IntentFilter(SINGLE_LOCATION_UPDATE_ACTION));
+        } else {
+            // Stop-detection PI
+            stationaryAlarmPI = PendingIntent.getBroadcast(mContext, 0, new Intent(STATIONARY_ALARM_ACTION), 0);
+            registerReceiver(stationaryAlarmReceiver, new IntentFilter(STATIONARY_ALARM_ACTION));
+
+            // Stationary region PI
+            stationaryRegionPI = PendingIntent.getBroadcast(mContext, 0, new Intent(STATIONARY_REGION_ACTION), PendingIntent.FLAG_CANCEL_CURRENT);
+            registerReceiver(stationaryRegionReceiver, new IntentFilter(STATIONARY_REGION_ACTION));
+
+            // Stationary location monitor PI
+            stationaryLocationPollingPI = PendingIntent.getBroadcast(mContext, 0, new Intent(STATIONARY_LOCATION_MONITOR_ACTION), 0);
+            registerReceiver(stationaryLocationMonitorReceiver, new IntentFilter(STATIONARY_LOCATION_MONITOR_ACTION));
+
+            // One-shot PI (TODO currently unused)
+            singleUpdatePI = PendingIntent.getBroadcast(mContext, 0, new Intent(SINGLE_LOCATION_UPDATE_ACTION), PendingIntent.FLAG_CANCEL_CURRENT);
+            registerReceiver(singleUpdateReceiver, new IntentFilter(SINGLE_LOCATION_UPDATE_ACTION));
+
+        }
 
         // Location criteria
         criteria = new Criteria();
@@ -280,8 +296,47 @@ public class DistanceFilterLocationProvider extends AbstractLocationProvider imp
         return bestResult;
     }
 
+    public void handleTrackingBySpeed(Location location) {
+        Integer distanceFilter = 10;
+
+        if (lastLocation == null) {
+            lastLocation = location;
+        }
+        if(location.getSpeed() < 1 || location.getSpeed() > 50) {
+            return;
+        }
+        if(location.getSpeed() > 5 && location.getSpeed() <= 8) {
+            distanceFilter = 10;
+        }
+        if(location.getSpeed() > 8 && location.getSpeed() <= 15) {
+            distanceFilter = 25;
+        }
+        if(location.getSpeed() > 15 && location.getSpeed() <= 20) {
+            distanceFilter = 50;
+        }
+        if(location.getSpeed() > 20 && location.getSpeed() <= 35) {
+            distanceFilter = 200;
+        }
+        if(location.getSpeed() > 35 && location.getSpeed() <= 50) {
+            distanceFilter = 400;
+        }
+
+        // Go ahead and cache, push to server
+        if (location.distanceTo(lastLocation) > distanceFilter) {
+            lastLocation = location;
+            handleLocation(location);
+        }
+    }
+
     public void onLocationChanged(Location location) {
         logger.debug("Location change: {} isMoving={}", location.toString(), isMoving);
+
+        Boolean forceTrackingBySpeed = true;
+
+        if(forceTrackingBySpeed) {
+            handleTrackingBySpeed(location);
+            return;
+        }
 
         if (!isMoving && !isAcquiringStationaryLocation && stationaryLocation==null) {
             // Perhaps our GPS signal was interupted, re-acquire a stationaryLocation now.
